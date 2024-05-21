@@ -2,13 +2,15 @@ package main
 
 import (
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
 // generateMermaidFromMatrix prend une matrice de transition et génère un diagramme d'état Mermaid.
-func generateMermaidFromMatrix(matrix [][]string) string {
+func generateMermaidFromMatrix(matrix [][]string, filter int) string {
 	if len(matrix) < 2 || len(matrix[0]) < 2 {
 		return ""
 	}
@@ -27,12 +29,11 @@ func generateMermaidFromMatrix(matrix [][]string) string {
 		from := matrix[i][0]
 		for j := 1; j < len(matrix[i]); j++ {
 			to := matrix[0][j]
-			weight := matrix[i][j]
-			if weight != "0" {
+			weight, _ := strconv.Atoi(matrix[i][j])
+			if weight > filter {
 				fromNode := eventMap[from]
 				toNode := eventMap[to]
-				// Utilisez la nouvelle syntaxe avec des étiquettes pour les nœuds
-				builder.WriteString(fmt.Sprintf("%s[%s] -- %s --> %s[%s]\n", fromNode, from, weight, toNode, to))
+				builder.WriteString(fmt.Sprintf("%s[%s] -- %d --> %s[%s]\n", fromNode, from, weight, toNode, to))
 			}
 		}
 	}
@@ -54,11 +55,11 @@ func readCSV(filename string) ([][]string, error) {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: main <filename.csv>")
-		return
-	}
-	filename := os.Args[1]
+	filename := ""
+	filter := 0
+	flag.StringVar(&filename, "in", "", "csv file to convert")
+	flag.IntVar(&filter, "min", 0, "min transition value to keep")
+	flag.Parse()
 
 	matrix, err := readCSV(filename)
 	if err != nil {
@@ -66,6 +67,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	diagram := generateMermaidFromMatrix(matrix)
+	diagram := generateMermaidFromMatrix(matrix, filter)
 	fmt.Println(diagram)
 }
