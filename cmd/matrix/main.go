@@ -38,14 +38,25 @@ func sortEventsByRunAndDate(events []Event) map[int][]Event {
 }
 
 // Function to build the transition matrix for each run
-func buildTransitionMatrix(events []Event) map[string]map[string]int {
+func buildTransitionMatrix(events []Event, startEventName string, stopEventName string) map[string]map[string]int {
 	groupedEvents := sortEventsByRunAndDate(events)
 	transitionMatrix := make(map[string]map[string]int)
 
-	for _, events := range groupedEvents {
+	for _, runEvents := range groupedEvents {
+		if len(runEvents) == 0 {
+			continue
+		}
+
+		// Transition from startEventName to the first event in the run
+		firstEvent := runEvents[0]
+		if _, ok := transitionMatrix[startEventName]; !ok {
+			transitionMatrix[startEventName] = make(map[string]int)
+		}
+		transitionMatrix[startEventName][firstEvent.Name]++
+
 		var previousEvent Event
-		for _, event := range events {
-			if previousEvent.Name != "" {
+		for i, event := range runEvents {
+			if i > 0 {
 				if _, ok := transitionMatrix[previousEvent.Name]; !ok {
 					transitionMatrix[previousEvent.Name] = make(map[string]int)
 				}
@@ -53,6 +64,13 @@ func buildTransitionMatrix(events []Event) map[string]map[string]int {
 			}
 			previousEvent = event
 		}
+
+		// Transition from the last event in the run to stopEventName
+		lastEvent := runEvents[len(runEvents)-1]
+		if _, ok := transitionMatrix[lastEvent.Name]; !ok {
+			transitionMatrix[lastEvent.Name] = make(map[string]int)
+		}
+		transitionMatrix[lastEvent.Name][stopEventName]++
 	}
 	return transitionMatrix
 }
@@ -162,8 +180,12 @@ func saveTransitionMatrix(writer io.Writer, matrix map[string]map[string]int) {
 
 func Run(args []string) error {
 	filename := ""
+	start := "start"
+	stop := "stop"
 	fs := flag.NewFlagSet(Name, flag.ContinueOnError)
-	fs.StringVar(&filename, "in", "", "csv of events")
+	fs.StringVar(&filename, "in", filename, "csv of events")
+	fs.StringVar(&start, "start", start, "start event name")
+	fs.StringVar(&stop, "stop", stop, "stop event name")
 	err := fs.Parse(args)
 	if err != nil {
 		return fmt.Errorf("cannot read app args : %w", err)
@@ -176,7 +198,7 @@ func Run(args []string) error {
 
 	for kindID, events := range eventsByKind {
 		fmt.Printf("Transition matrix for kind_id %d:\n", kindID)
-		transitionMatrix := buildTransitionMatrix(events)
+		transitionMatrix := buildTransitionMatrix(events, start, stop)
 		saveTransitionMatrix(os.Stdout, transitionMatrix)
 	}
 	return nil
