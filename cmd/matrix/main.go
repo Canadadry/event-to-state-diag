@@ -76,7 +76,7 @@ func buildTransitionMatrix(events []Event, startEventName string, stopEventName 
 }
 
 // Function to read and parse the CSV file, grouped by kind_id
-func readCSVByKind(filename string) (map[int][]Event, error) {
+func readCSVByKind(filename string, separator rune) (map[int][]Event, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -84,12 +84,17 @@ func readCSVByKind(filename string) (map[int][]Event, error) {
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	reader.Comma = ';'
+	reader.Comma = separator
 	reader.TrimLeadingSpace = true
 	_, err = reader.Read() // Skip header
 	if err != nil {
 		return nil, err
 	}
+
+	const DateFieldIndex = 10
+	const KindFieldIndex = 6
+	const ExperienceFieldIndex = 5
+	const EventNameFieldIndex = 2
 
 	eventsByKind := make(map[int][]Event)
 	for {
@@ -101,7 +106,7 @@ func readCSVByKind(filename string) (map[int][]Event, error) {
 			return nil, err
 		}
 
-		sentAt := strings.TrimSpace(record[10])
+		sentAt := strings.TrimSpace(record[DateFieldIndex])
 		if sentAt == "" {
 			continue
 		}
@@ -112,20 +117,20 @@ func readCSVByKind(filename string) (map[int][]Event, error) {
 			continue
 		}
 
-		kindID, err := strconv.Atoi(record[6])
+		kindID, err := strconv.Atoi(record[KindFieldIndex])
 		if err != nil {
-			log.Printf("Skipping record with invalid kind_id: %s", record[6])
+			log.Printf("Skipping record with invalid kind_id: %s", record[KindFieldIndex])
 			continue
 		}
 
-		experienceID, err := strconv.Atoi(record[5])
+		experienceID, err := strconv.Atoi(record[ExperienceFieldIndex])
 		if err != nil {
-			log.Printf("Skipping record with invalid experience_id: %s", record[5])
+			log.Printf("Skipping record with invalid experience_id: %s", record[ExperienceFieldIndex])
 			continue
 		}
 
 		event := Event{
-			Name:  record[2],
+			Name:  record[EventNameFieldIndex],
 			RunID: experienceID,
 			Date:  date,
 		}
@@ -180,26 +185,44 @@ func saveTransitionMatrix(writer io.Writer, matrix map[string]map[string]int) {
 
 func Run(args []string) error {
 	filename := ""
+	out := ""
 	start := "start"
 	stop := "stop"
+	separator := ";"
 	fs := flag.NewFlagSet(Name, flag.ContinueOnError)
 	fs.StringVar(&filename, "in", filename, "csv of events")
+	fs.StringVar(&out, "out", out, "result matrix file name")
 	fs.StringVar(&start, "start", start, "start event name")
 	fs.StringVar(&stop, "stop", stop, "stop event name")
+	fs.StringVar(&separator, "separator", separator, "separator in csv file")
 	err := fs.Parse(args)
 	if err != nil {
 		return fmt.Errorf("cannot read app args : %w", err)
 	}
+	if filename == "" {
+		return fmt.Errorf("must define input file")
+	}
+	if out == "" {
+		out = "output_" + filename
+	}
 
-	eventsByKind, err := readCSVByKind(filename)
+	if len(separator) != 1 {
+		return fmt.Errorf("separator must by only one char got %d", len(separator))
+	}
+
+	eventsByKind, err := readCSVByKind(filename, ([]rune(separator))[0])
 	if err != nil {
 		return fmt.Errorf("cannot read csv : %w", err)
 	}
-
 	for kindID, events := range eventsByKind {
-		fmt.Printf("Transition matrix for kind_id %d:\n", kindID)
 		transitionMatrix := buildTransitionMatrix(events, start, stop)
-		saveTransitionMatrix(os.Stdout, transitionMatrix)
+		outFilename := fmt.Sprintf("%d_%s", kindID, out)
+		f, err := os.OpenFile(outFilename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err != nil {
+			return fmt.Errorf("cannot open out file : ", err)
+		}
+		defer f.Close()
+		saveTransitionMatrix(f, transitionMatrix)
 	}
 	return nil
 }
